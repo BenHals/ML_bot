@@ -1,9 +1,11 @@
-import boto3
+import os
 
-print(boto3)
+import nacl
+
+PUBLIC_KEY = os.environ.get("DISCORD_PUBLIC_KEY")
 
 def lambda_handler(event, context):
-    result = "Hello world"
+    result = f"Hello world {str(nacl)} {PUBLIC_KEY}"
     return {
         'statusCode': 200,
         'body': result
