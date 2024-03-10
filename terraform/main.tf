@@ -2,7 +2,7 @@ terraform {
   required_providers {
     aws = {
       source  = "hashicorp/aws"
-      version = "~> 4.16"
+      version = "~> 5.0"
     }
   }
 
@@ -36,9 +36,35 @@ data "aws_iam_policy_document" "lambda_assume_role_policy" {
   }
 }
 
+data "aws_iam_policy_document" "lambda_logging_policy" {
+  statement {
+    effect = "Allow"
+
+    actions = [
+      "logs:CreateLogGroup",
+      "logs:CreateLogStream",
+      "logs:PutLogEvents"
+    ]
+
+    resources = ["arn:aws:logs:*:*:*"]
+  }
+}
+
+resource "aws_iam_policy" "lambda_logging" {
+  name        = "lambda_logging"
+  path        = "/"
+  description = "IAM policy for logging from a lambda"
+  policy      = data.aws_iam_policy_document.lambda_logging_policy.json
+}
+
 resource "aws_iam_role" "lambda_role" {
   name               = "lambda-lambdaRole"
   assume_role_policy = data.aws_iam_policy_document.lambda_assume_role_policy.json
+}
+
+resource "aws_iam_role_policy_attachment" "lambda_logging" {
+  role       = aws_iam_role.lambda_role.name
+  policy_arn = aws_iam_policy.lambda_logging.arn
 }
 
 data "archive_file" "test_lambda_package" {
@@ -84,7 +110,7 @@ resource "aws_lambda_function" "test_lambda_function" {
   filename         = "test_lambda_package.zip"
   source_code_hash = data.archive_file.test_lambda_package.output_base64sha256
   role             = aws_iam_role.lambda_role.arn
-  runtime          = "python3.10"
+  runtime          = "python3.11"
   handler          = "test_lambda_function.lambda_handler"
   timeout          = 10
   layers           = [aws_lambda_layer_version.python_layer.arn]
@@ -93,6 +119,7 @@ resource "aws_lambda_function" "test_lambda_function" {
       DISCORD_PUBLIC_KEY = var.DISCORD_PUBLIC_KEY
     }
   }
+  depends_on = [aws_iam_role_policy_attachment.lambda_logging]
 }
 
 resource "aws_api_gateway_rest_api" "discord_entry" {
