@@ -36,6 +36,18 @@ data "aws_iam_policy_document" "lambda_assume_role_policy" {
   }
 }
 
+data "aws_iam_policy_document" "api_gateway_assume_role_policy" {
+  statement {
+    effect  = "Allow"
+    actions = ["sts:AssumeRole"]
+
+    principals {
+      type        = "Service"
+      identifiers = ["apigateway.amazonaws.com"]
+    }
+  }
+}
+
 data "aws_iam_policy_document" "lambda_logging_policy" {
   statement {
     effect = "Allow"
@@ -43,7 +55,11 @@ data "aws_iam_policy_document" "lambda_logging_policy" {
     actions = [
       "logs:CreateLogGroup",
       "logs:CreateLogStream",
-      "logs:PutLogEvents"
+      "logs:DescribeLogGroups",
+      "logs:DescribeLogStreams",
+      "logs:PutLogEvents",
+      "logs:GetLogEvents",
+      "logs:FilterLogEvents"
     ]
 
     resources = ["arn:aws:logs:*:*:*"]
@@ -62,9 +78,19 @@ resource "aws_iam_role" "lambda_role" {
   assume_role_policy = data.aws_iam_policy_document.lambda_assume_role_policy.json
 }
 
+resource "aws_iam_role" "apigateway_role" {
+  name               = "api-gateway-role"
+  assume_role_policy = data.aws_iam_policy_document.api_gateway_assume_role_policy.json
+}
+
 resource "aws_iam_role_policy_attachment" "lambda_logging" {
   role       = aws_iam_role.lambda_role.name
   policy_arn = aws_iam_policy.lambda_logging.arn
+}
+
+resource "aws_iam_role_policy_attachment" "api_gateway_logging" {
+  role       = aws_iam_role.apigateway_role.name
+  policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonAPIGatewayPushToCloudWatchLogs"
 }
 
 data "archive_file" "test_lambda_package" {
@@ -140,6 +166,17 @@ resource "aws_api_gateway_method" "proxy" {
   authorization = "NONE"
 }
 
+# resource "aws_api_gateway_method_settings" "YOUR_settings" {
+#   rest_api_id = aws_api_gateway_rest_api.discord_entry.id
+#   stage_name  = "test"
+#   method_path = "*/*"
+#   settings {
+#     logging_level      = "INFO"
+#     data_trace_enabled = true
+#     metrics_enabled    = true
+#   }
+# }
+
 resource "aws_lambda_permission" "api_gateway" {
   statement_id  = "AllowAPIGatewayInvoke"
   action        = "lambda:InvokeFunction"
@@ -154,14 +191,69 @@ resource "aws_api_gateway_integration" "lambda_integration" {
   http_method = aws_api_gateway_method.proxy.http_method
 
   integration_http_method = "POST"
-  type                    = "AWS_PROXY"
+  type                    = "AWS"
   uri                     = aws_lambda_function.test_lambda_function.invoke_arn
+  passthrough_behavior    = "NEVER"
+  request_templates = {
+    "application/json" = <<EOF
+##  See http://docs.aws.amazon.com/apigateway/latest/developerguide/api-gateway-mapping-template-reference.html
+##  This template will pass through all parameters including path, querystring, header, stage variables, and context through to the integration endpoint via the body/payload
+##  'rawBody' allows passthrough of the (unsurprisingly) raw request body; similar to flask.request.data
+#set($allParams = $input.params())
+{
+"rawBody": "$util.escapeJavaScript($input.body).replace("\'", "'")",
+"body-json" : $input.json('$'),
+"params" : {
+#foreach($type in $allParams.keySet())
+    #set($params = $allParams.get($type))
+"$type" : {
+    #foreach($paramName in $params.keySet())
+    "$paramName" : "$util.escapeJavaScript($params.get($paramName))"
+        #if($foreach.hasNext),#end
+    #end
+}
+    #if($foreach.hasNext),#end
+#end
+},
+"stage-variables" : {
+#foreach($key in $stageVariables.keySet())
+"$key" : "$util.escapeJavaScript($stageVariables.get($key))"
+    #if($foreach.hasNext),#end
+#end
+},
+"context" : {
+    "account-id" : "$context.identity.accountId",
+    "api-id" : "$context.apiId",
+    "api-key" : "$context.identity.apiKey",
+    "authorizer-principal-id" : "$context.authorizer.principalId",
+    "caller" : "$context.identity.caller",
+    "cognito-authentication-provider" : "$context.identity.cognitoAuthenticationProvider",
+    "cognito-authentication-type" : "$context.identity.cognitoAuthenticationType",
+    "cognito-identity-id" : "$context.identity.cognitoIdentityId",
+    "cognito-identity-pool-id" : "$context.identity.cognitoIdentityPoolId",
+    "http-method" : "$context.httpMethod",
+    "stage" : "$context.stage",
+    "source-ip" : "$context.identity.sourceIp",
+    "user" : "$context.identity.user",
+    "user-agent" : "$context.identity.userAgent",
+    "user-arn" : "$context.identity.userArn",
+    "request-id" : "$context.requestId",
+    "resource-id" : "$context.resourceId",
+    "resource-path" : "$context.resourcePath"
+    }
+}
+EOF
+  }
 }
 
 resource "aws_api_gateway_deployment" "name" {
   depends_on  = [aws_api_gateway_integration.lambda_integration]
   rest_api_id = aws_api_gateway_rest_api.discord_entry.id
   stage_name  = "test"
+}
+
+resource "aws_api_gateway_account" "main" {
+  cloudwatch_role_arn = aws_iam_role.apigateway_role.arn
 }
 
 output "base_url" {

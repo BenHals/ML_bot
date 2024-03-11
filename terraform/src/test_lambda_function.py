@@ -25,6 +25,10 @@ def verify_signature(event: dict[str, Any]) -> tuple[bool, Exception | None]:
     signature = event["params"]["header"].get("x-signature-ed25519")
     timestamp = event["params"]["header"].get("x-signature-timestamp")
 
+    logger.warning(PUBLIC_KEY)
+    logger.warning(signature)
+    logger.warning(timestamp)
+    logger.warning(raw_body)
     message = timestamp.encode() + raw_body.encode()
     verify_key = nacl.signing.VerifyKey(bytes.fromhex(PUBLIC_KEY))
     try:
@@ -42,10 +46,6 @@ def handle_ping() -> Response:
 def lambda_handler(event, context) -> Response:
     logger.warning(event)
     logger.warning(context)
-    return {
-        "type": ResponseTypes.PING_RESPONSE.value,
-        "data": "Hello"
-    }
     verified, verify_exception = verify_signature(event)
     if not verified and verify_exception is not None:
         raise Exception(f"Auth Exception {verify_exception}")
