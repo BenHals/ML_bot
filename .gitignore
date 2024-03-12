@@ -166,4 +166,4 @@ cython_debug/
 *.tfstate
 *.tfstage.*
 *.tfvars
-terraform/python
+terraform/archive
