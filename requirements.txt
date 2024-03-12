@@ -1,2 +1,4 @@
 pynacl
 requests
+numpy
+Pillow

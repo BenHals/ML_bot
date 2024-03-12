@@ -3,6 +3,16 @@ variable "DISCORD_PUBLIC_KEY" {
   type        = string
 }
 
+variable "DISCORD_APP_ID" {
+  description = "App id for discord bot"
+  type        = string
+}
+
+variable "DISCORD_BOT_TOKEN" {
+  description = "Bot token for discord bot"
+  type        = string
+}
+
 variable "root_name" {
   description = "Root name for the project"
   type        = string
@@ -38,4 +48,10 @@ variable "command_handler_name_prefix" {
   description = "Name prefix for command handler"
   type        = string
   default     = "command-handler"
+}
+
+variable "test_slow_command_name_prefix" {
+  description = "Name prefix for slow command"
+  type        = string
+  default     = "test-slow-command"
 }

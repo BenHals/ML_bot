@@ -4,6 +4,7 @@ import os
 from enum import Enum
 from typing import Any
 
+import boto3
 import nacl
 import nacl.exceptions
 import nacl.signing
@@ -17,7 +18,7 @@ class ResponseTypes(Enum):
     ACK_NO_SOURCE = 2
     MESSAGE_NO_SOURCE = 3
     MESSAGE_WITH_SOURCE = 4
-    ACK_WITH_SOURCE = 5
+    DEFERRED_CHANNEL_MESSAGE_WITH_SOURCE = 5
 
 Response = dict[str, Any]
 
@@ -48,10 +49,10 @@ def handle_ping() -> Response:
         })
     } 
 
-def _build_reponse(content: dict[str, Any]) -> Response:
+def _build_reponse(content: dict[str, Any], type: ResponseTypes) -> Response:
     response = {
         'body': json.dumps({
-            "type": ResponseTypes.MESSAGE_WITH_SOURCE.value,
+            "type": type.value,
             "data": content,
         }),
         'statusCode': 200
@@ -61,10 +62,24 @@ def _build_reponse(content: dict[str, Any]) -> Response:
 
 def handle_command(body: dict[str, Any]) -> Response:
     command = body['data']['name']
-    if command == 'bleb':
+    if command == 'test_resp':
         response = _build_reponse({
-            "content": "BLOOP"
-        })
+            "content": "Bot working :)"
+        }, ResponseTypes.MESSAGE_WITH_SOURCE)
+        return response
+    elif command == "slow_test":
+        interaction_token = body['token']
+        lambda_client = boto3.client('lambda')
+        lambda_client.invoke(
+            FunctionName='test_slow_command_lambda',
+            InvocationType='Event',
+            Payload=json.dumps({
+                'interaction_token': interaction_token
+            })
+        )
+        response = _build_reponse({
+            "content": "LOADING"
+        }, ResponseTypes.DEFERRED_CHANNEL_MESSAGE_WITH_SOURCE)
         return response
     else:
         raise ValueError("Invalid Command")
