@@ -1,6 +1,6 @@
 data "archive_file" "command_handler_lambda_source" {
   type        = "zip"
-  source_file = "${var.artifact_source_path}/${var.command_handler_name_prefix}_${var.lambda_source_suffix}.py"
+  source_dir  = "${var.artifact_source_path}/${var.command_handler_name_prefix}_${var.lambda_source_suffix}"
   output_path = "${var.archive_path}/${var.command_handler_name_prefix}_${var.lambda_source_suffix}.zip"
 }
 
@@ -14,7 +14,7 @@ resource "null_resource" "command_handler_lambda_layer" {
       set -e
       rm -rf ${var.archive_path}/python/
       mkdir ${var.archive_path}/python
-      pip install -r ${local.lambda_requirements_path} -t ${var.archive_path}/python/
+      python3.11 -m pip install -r ${local.lambda_requirements_path} -t ${var.archive_path}/python/
       cd ${var.archive_path}
       zip -r ${var.command_handler_name_prefix}_${var.lambda_layer_suffix}.zip python/
     EOT
@@ -35,6 +35,7 @@ resource "aws_lambda_layer_version" "command_handler_lambda_layer" {
   s3_key       = aws_s3_object.command_handler_lambda_layer_zip.key
   depends_on   = [aws_s3_object.command_handler_lambda_layer_zip]
   skip_destroy = true
+  # source_code_hash = filebase64sha256("${var.archive_path}/${var.command_handler_name_prefix}_${var.lambda_layer_suffix}.zip")
 }
 
 resource "aws_lambda_function" "command_handler_lambda" {
